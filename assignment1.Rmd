@@ -1,0 +1,157 @@
+---
+title: 'EDS 241: Assignment 1'
+author: 'Javier Patrón'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# EDS 241 Assignment 1
+### Due on 2/27/23
+
+The data for this assignment are taken from CalEnviroScreen 4.0, a mapping and data tool produced by the California Office of Environmental Health Hazards Assessment (OEHHA). The data are compiled and constructed from a variety of sources and cover all 8,035 census tracts in California. Source: https://oehha.ca.gov/calenviroscreen/report/calenviroscreen-40
+
+The full data are contained in the file CES4.xls, which is available on Gauchospace (note that the Excel file has three “tabs” or “sheets”). The data is in the tab “CES4.0FINAL_results” and
+“Data Dictionary” contains the definition of the variables. For the assignment, you will need the following variables: CensusTract, TotalPopulation, LowBirthWeight (percent of census tract births with weight less than 2500g), PM25 (ambient concentrations of PM2.5 in the census tract, in micrograms per cubic meters), Poverty (percent of population in the census tract living below twice the federal poverty line), and LinguisticIsolation (percent of households in the census tract with limited English speaking).
+
+Set the libraries
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(estimatr)
+library(stargazer)
+library(car)
+
+```
+
+Read the data
+```{r}
+ces4 <- read_csv("CES4.csv") |> 
+  clean_names()
+
+```
+
+(a) What is the average concentration of PM2.5 across all census tracts in California?
+
+```{r}
+mean(ces4$pm2_5)
+```
+
+(b) Make a histogram depicting the distribution of percent low birth weight and PM2.5.
+
+```{r}
+
+ggplot(ces4, aes(x=pm2_5)) +
+  geom_histogram(bins = 30, fill = "darkolivegreen" , color = "gray50") +
+  labs(title = "Distribution of PM2.5",
+       x = "Annual mean PM 2.5 concentrations")
+
+ggplot(ces4, aes(x=as.numeric(low_birth_weight))) +
+  geom_histogram(bins = 30, fill = "deepskyblue4", color = "gray50") +
+  labs(title = "Distribution of Low Birth Weight",
+      x = "Percent low birth weight")
+
+
+```
+
+
+(c) Estimate an OLS regression of LowBirthWeight on PM25. Report the estimated slope coefficient and its heteroskedasticity-robust standard error. Interpret the estimated slope coefficient. Is the effect of PM25 on Low Birth Weight statistically significant at the 5% level?
+
+```{r}
+
+ols_model <- lm(formula = low_birth_weight ~ pm2_5, data = ces4)
+summary(ols_model)
+
+lm_robust(formula = low_birth_weight ~ pm2_5, data = ces4)
+
+
+ols_std_erros <- starprep(ols_model,
+         stat = c("std.error"),
+         se_type = "HC1",
+         alpha = 0.05)
+
+stargazer(ols_model,
+          se = ols_std_erros,
+          type = "text")
+
+#COEFFICENTS
+olm_robust <- lm_robust(formula = low_birth_weight ~ pm2_5, data = ces4)
+
+# HETEROSKEDASTIC ERRORS
+se_he_model1 <- starprep(ols_model, stat = c("std.error"), se_type = "HC1", alpha = 0.05)
+
+```
+
+**Interpretation: As we can see in the results above we can interpret that:**
+- Beta Cero is 3.8, meaning that on average the weight of the low_birth variable is 3.08 Percent (Making PM2.5 = 0). 
+- Beta One which is 0.118, this means that on average, for every one unit increase of PM2.5 the percent of low birth weight increases by 0.118 %. 
+- The coefficients for the slope (Beta One) tell us that we are 95% confident that our slope or Beta One will fall between `r olm_robust$conf.low` and `r olm_robust$conf.high`.** INCOMPLETE
+- As the P-Value is is lower than 0.05 we can statistically reject the null and say that the results are statistically significant.
+
+
+(d) Suppose a new air quality policy is expected to reduce PM2.5 concentration by 2 micrograms per cubic meters. Predict the new average value of LowBirthWeight and derive its 95% confidence interval. Interpret the 95% confidence interval. [The script “LinearPrediction.R” available on Gauchospace will be helpful for this.]
+
+```{r}
+
+ols_model2 <- lm_robust(formula = low_birth_weight ~ pm2_5, 
+                        data = ces4, 
+                        se_type = "HC1", 
+                        alpha = 0.05)
+
+linear_df <- data.frame(pm2_5 = c(2))
+
+predict(ols_model2, 
+        newdata = linear_df, 
+        se.fit = TRUE, 
+        interval = "confidence")
+  
+  
+```
+
+INCOMPLETE
+
+(e) Add the variable Poverty as an explanatory variable to the regression in (d). Interpret the estimated coefficient on Poverty. What happens to the estimated coefficient on PM2.5, compared to the regression in (d). Explain.
+
+```{r}
+
+multi_model <- lm_robust(formula = low_birth_weight ~ pm2_5 + poverty, 
+                        data = ces4, 
+                        se_type = "HC1", 
+                        alpha = 0.05)
+
+  
+```
+
+To interpret the new coefficient on poverty we can interpret that on average, for every increase percent of population living below two times the federal poverty level, it will have an effect of 0.0274 in the percent of low_birth_weight. On the other hand, adding the poverty variable in the regression and making it a multiple regression, it creates an effect on the estimated coefficient of pm2_5 slope reducing it from 0.118 to 0.059. Meaning that the effect of PM2.5 will increase slower in the low_birth_weight as now it has the poverty effect in the background. 
+
+
+
+(f) Create an indicator variable equal to 1 if the census tract is above the median LinguisticIsolation (6.9), and equal to 0 otherwise. Add this indicator variable to regression model used in (e) and interpret the estimated coefficient on the indicator variable.
+
+
+```{r}
+
+x <- mean(ces4$linguistic_isolation, na.rm = TRUE)
+
+
+ces4 <- ces4 |> 
+  mutate(indicator = case_when(
+    linguistic_isolation > x ~ "1",
+    TRUE ~ "0"
+  ))
+
+multi_model2 <- lm_robust(formula = low_birth_weight ~ pm2_5 + poverty + indicator, 
+                        data = ces4, 
+                        se_type = "HC1", 
+                        alpha = 0.05)
+
+multi_model2
+
+
+```
+
+**Interpretation: For the indicator interpretation we can say that on average, for every increase of the indicator variable the percetage of low_birth_weight will increase 0.129 percent. In other words, if the LinguisticIsolation is above the average > than `r x` then the effect in low_birth_weight will be 0.13 percent.**
+
+
+
+
